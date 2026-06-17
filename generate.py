@@ -42,6 +42,7 @@ for d in data:
     source = d[7] or "(blank)"
     hear = d[11] or "(none)"
     age = d[5] or "(none)"
+    web = 1 if d[8].strip() == "" else 0   # "Added By First Name" empty => webform; else added at center
     rows.append([
         idx(centers, center),
         idx(statuses, status),
@@ -49,6 +50,7 @@ for d in data:
         idx(sources, source),
         idx(hears, hear),
         idx(ages, age),
+        web,
     ])
 
 # Funnel-ordered canonical status order for table columns
@@ -286,14 +288,14 @@ HTML = r"""<!DOCTYPE html>
 
   <section>
     <h2>Center-wise &mdash; leads by Webform vs. Added at Center</h2>
-    <p class="note">How each center&rsquo;s leads were created: <b>Webform</b> = online form submission (&ldquo;Created from Form&rdquo;) vs. <b>At Center</b> = staff-entered (&ldquo;Added by Center&rdquo; &mdash; walk-in / call / referral logged by the team). Uses the current date filter; ignores the School filter so every center shows.</p>
+    <p class="note">Based on the <b>&ldquo;Added By First Name&rdquo;</b> field: <b>Webform</b> = no staff name on the record (self-serve online form) vs. <b>At Center</b> = a staff member&rsquo;s name is present (walk-in / call / referral logged by the team). Uses the current date filter; ignores the School filter so every center shows.</p>
     <div class="panel"><div class="scrollx"><table id="centerSrc"></table></div></div>
   </section>
 </div>
 
 <script>
 const DATA = __DATA__;
-const R = DATA.rows;            // [centerIdx, statusIdx, 'YYYY-MM-DD', srcIdx, hearIdx, ageIdx]
+const R = DATA.rows;            // [centerIdx, statusIdx, 'YYYY-MM-DD', srcIdx, hearIdx, ageIdx, web(1=AddedByFirstName empty)]
 const S = DATA.statuses, C = DATA.centers, SRC = DATA.sources, HEAR = DATA.hears;
 const ORDER = DATA.statusOrder;
 const sIdx = s => S.indexOf(s);
@@ -562,17 +564,16 @@ function renderSchools(){
 
 function renderCenterSource(){
   const f=state.from,t=state.to;
-  const FORM=SRC.indexOf('Created from Form'), CEN=SRC.indexOf('Added by Center');
   const rows=R.filter(r=>r[2]>=f&&r[2]<=t);
   const per={};
-  for(const r of rows){ const o=per[r[0]]=per[r[0]]||{web:0,cen:0,oth:0};
-    if(r[3]===FORM)o.web++; else if(r[3]===CEN)o.cen++; else o.oth++; }
-  const ids=Object.keys(per).map(Number).sort((a,b)=>(per[b].web+per[b].cen+per[b].oth)-(per[a].web+per[a].cen+per[a].oth));
+  for(const r of rows){ const o=per[r[0]]=per[r[0]]||{web:0,cen:0};
+    if(r[6]===1)o.web++; else o.cen++; }   // r[6]=1 => "Added By First Name" empty => webform
+  const ids=Object.keys(per).map(Number).sort((a,b)=>(per[b].web+per[b].cen)-(per[a].web+per[a].cen));
   let h='<thead><tr><th>Center</th><th>Webform</th><th>At Center</th><th>Total</th><th>% Webform</th></tr></thead><tbody>';
-  let T={web:0,cen:0,oth:0};
-  for(const id of ids){ const o=per[id]; const tot=o.web+o.cen+o.oth; T.web+=o.web;T.cen+=o.cen;T.oth+=o.oth;
+  let T={web:0,cen:0};
+  for(const id of ids){ const o=per[id]; const tot=o.web+o.cen; T.web+=o.web;T.cen+=o.cen;
     h+=`<tr><td>${C[id]}</td><td>${fmt(o.web)}</td><td>${fmt(o.cen)}</td><td>${fmt(tot)}</td><td>${pct(o.web,tot).toFixed(0)}%</td></tr>`; }
-  const gtot=T.web+T.cen+T.oth;
+  const gtot=T.web+T.cen;
   h+=`<tr class="totrow"><td>All</td><td>${fmt(T.web)}</td><td>${fmt(T.cen)}</td><td>${fmt(gtot)}</td><td>${pct(T.web,gtot).toFixed(0)}%</td></tr></tbody>`;
   document.getElementById('centerSrc').innerHTML=h;
 }
