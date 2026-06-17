@@ -26,7 +26,7 @@ def pdate(s):
         return None
 
 # index maps to shrink payload
-centers, statuses, sources, hears, ages = [], [], [], [], []
+centers, statuses, sources, hears, ages, addedbys = [], [], [], [], [], []
 def idx(lst, v):
     if v not in lst:
         lst.append(v)
@@ -42,7 +42,8 @@ for d in data:
     source = d[7] or "(blank)"
     hear = d[11] or "(none)"
     age = d[5] or "(none)"
-    web = 1 if d[8].strip() == "" else 0   # "Added By First Name" empty => webform; else added at center
+    addedby = d[8].strip()                 # "Added By First Name": the staff person who logged the lead
+    web = 1 if addedby == "" else 0        # empty => webform
     rows.append([
         idx(centers, center),
         idx(statuses, status),
@@ -51,6 +52,7 @@ for d in data:
         idx(hears, hear),
         idx(ages, age),
         web,
+        idx(addedbys, addedby or "Webform"),
     ])
 
 # Funnel-ordered canonical status order for table columns
@@ -71,6 +73,7 @@ payload = {
     "sources": sources,
     "hears": hears,
     "ages": ages,
+    "addedby": addedbys,
     "rows": rows,
     "generated": datetime.now().strftime("%Y-%m-%d %H:%M"),
     "dataMin": min(r[2] for r in rows),
@@ -251,8 +254,8 @@ HTML = r"""<!DOCTYPE html>
   </section>
 
   <section>
-    <h2>Center-wise &mdash; leads by &ldquo;Added By First Name&rdquo;</h2>
-    <p class="note">Split by the <b>&ldquo;Added By First Name&rdquo;</b> field: <b>Webform</b> = field is empty (self-serve online form) vs. <b>Added at Center</b> = a staff first name is present (walk-in / call / referral logged by the team). Uses the current date filter; ignores the School filter so every center shows.</p>
+    <h2>Center &times; who added the lead &mdash; &ldquo;Added By First Name&rdquo;</h2>
+    <p class="note">Rows = centers, columns = the <b>staff first name</b> who logged each lead (the <b>Webform</b> column = empty name, i.e. self-serve online form). Cells are lead counts. Uses the date filter; ignores the School filter so every center shows. Scroll right for all staff.</p>
     <div class="panel"><div class="scrollx"><table id="centerSrc"></table></div></div>
   </section>
 </div>
@@ -260,7 +263,7 @@ HTML = r"""<!DOCTYPE html>
 <script>
 const DATA = __DATA__;
 const R = DATA.rows;            // [centerIdx, statusIdx, 'YYYY-MM-DD', srcIdx, hearIdx, ageIdx, web(1=AddedByFirstName empty)]
-const S = DATA.statuses, C = DATA.centers, SRC = DATA.sources, HEAR = DATA.hears;
+const S = DATA.statuses, C = DATA.centers, SRC = DATA.sources, HEAR = DATA.hears, ADDEDBY = DATA.addedby;
 const ORDER = DATA.statusOrder;
 const sIdx = s => S.indexOf(s);
 // ---- Metric definitions (per user spec) ----
@@ -357,6 +360,7 @@ function render(){
     + `<div class="card" style="grid-column:1/-1;background:var(--panel2)"><div class="k">Definitions</div>`
     + `<div style="font-size:12.5px;margin-top:4px;line-height:1.6">`
     + `<b style="color:var(--good)">Success</b> = Enrollment&nbsp;-&nbsp;Enrolled + Withdrawn &nbsp;·&nbsp; `
+    + `<span style="color:var(--muted)">(Withdrawn counts as Success because a child must enroll before they can withdraw.)</span> &nbsp;·&nbsp; `
     + `<b>Lead&rarr;Success %</b> = Success &divide; Total leads &nbsp;·&nbsp; `
     + `<span style="color:var(--muted)">Only Total leads &amp; Success are shown — a lead is bucketed under a single current status, so mid-funnel counts (Tour, Waitlist) would understate reality.</span>`
     + `</div></div>`;
@@ -519,18 +523,27 @@ function renderSchools(){
 }
 
 function renderCenterSource(){
+  // Matrix: rows = centers, columns = the "Added By First Name" person (empty => Webform).
+  // Cells = lead counts. Respects the date filter; ignores the School filter so all centers show.
   const f=state.from,t=state.to;
   const rows=R.filter(r=>r[2]>=f&&r[2]<=t);
-  const per={};
-  for(const r of rows){ const o=per[r[0]]=per[r[0]]||{web:0,cen:0};
-    if(r[6]===1)o.web++; else o.cen++; }   // r[6]=1 => "Added By First Name" empty => webform
-  const ids=Object.keys(per).map(Number).sort((a,b)=>(per[b].web+per[b].cen)-(per[a].web+per[a].cen));
-  let h='<thead><tr><th>Center</th><th>Webform</th><th>At Center</th><th>Total</th><th>% Webform</th></tr></thead><tbody>';
-  let T={web:0,cen:0};
-  for(const id of ids){ const o=per[id]; const tot=o.web+o.cen; T.web+=o.web;T.cen+=o.cen;
-    h+=`<tr><td>${C[id]}</td><td>${fmt(o.web)}</td><td>${fmt(o.cen)}</td><td>${fmt(tot)}</td><td>${pct(o.web,tot).toFixed(0)}%</td></tr>`; }
-  const gtot=T.web+T.cen;
-  h+=`<tr class="totrow"><td>All</td><td>${fmt(T.web)}</td><td>${fmt(T.cen)}</td><td>${fmt(gtot)}</td><td>${pct(T.web,gtot).toFixed(0)}%</td></tr></tbody>`;
+  const webIdx=ADDEDBY.indexOf('Webform');
+  const ptot={}, ctot={}, cell={};
+  for(const r of rows){
+    ptot[r[7]]=(ptot[r[7]]||0)+1;
+    ctot[r[0]]=(ctot[r[0]]||0)+1;
+    const k=r[0]+'|'+r[7]; cell[k]=(cell[k]||0)+1;
+  }
+  // columns: Webform first, then staff by total leads desc
+  const persons=Object.keys(ptot).map(Number).sort((a,b)=>{
+    if(a===webIdx)return -1; if(b===webIdx)return 1; return ptot[b]-ptot[a]; });
+  const centers=Object.keys(ctot).map(Number).sort((a,b)=>ctot[b]-ctot[a]);
+  const pname=id=> id===webIdx?'Webform':ADDEDBY[id];
+  let h='<thead><tr><th>Center</th>'+persons.map(p=>`<th>${pname(p)}</th>`).join('')+'<th class="tot">Total</th></tr></thead><tbody>';
+  for(const c of centers){
+    h+=`<tr><td>${C[c]}</td>`+persons.map(p=>{const v=cell[c+'|'+p]||0; return `<td class="${v?'':'heat0'}">${v||''}</td>`;}).join('')+`<td class="tot">${fmt(ctot[c])}</td></tr>`;
+  }
+  h+=`<tr class="totrow"><td>All</td>`+persons.map(p=>`<td>${fmt(ptot[p])}</td>`).join('')+`<td>${fmt(rows.length)}</td></tr></tbody>`;
   document.getElementById('centerSrc').innerHTML=h;
 }
 
