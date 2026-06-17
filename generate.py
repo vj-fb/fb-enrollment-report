@@ -359,7 +359,7 @@ function render(){
     `<div class="card"><div class="k">${k[0]}</div><div class="v">${k[1]}</div></div>`).join('')
     + `<div class="card" style="grid-column:1/-1;background:var(--panel2)"><div class="k">Definitions</div>`
     + `<div style="font-size:12.5px;margin-top:4px;line-height:1.6">`
-    + `<b style="color:var(--good)">Success</b> = Enrollment&nbsp;-&nbsp;Enrolled + Withdrawn &nbsp;·&nbsp; `
+    + `<b style="color:var(--good)">Success</b> = Enrolled + Withdrawn &nbsp;·&nbsp; `
     + `<span style="color:var(--muted)">(Withdrawn counts as Success because a child must enroll before they can withdraw.)</span> &nbsp;·&nbsp; `
     + `<b>Lead&rarr;Success %</b> = Success &divide; Total leads &nbsp;·&nbsp; `
     + `<span style="color:var(--muted)">Only Total leads &amp; Success are shown — a lead is bucketed under a single current status, so mid-funnel counts (Tour, Waitlist) would understate reality.</span>`
