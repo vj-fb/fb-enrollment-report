@@ -198,7 +198,7 @@ HTML = r"""<!DOCTYPE html>
   <section>
     <div class="findings">
       <h2 style="margin:0 0 2px">Key findings — Mar 15 → Jun 15, 2025 vs 2026</h2>
-      <div class="note" style="margin:2px 0 0">Computed live from the current <b>School</b> filter, comparing the same <b>Mar 15 &ndash; Jun 15</b> window in each year. Ignores the date filter above. See <b>Definitions</b> above for how Enrolled &amp; Tours are counted.</div>
+      <div class="note" style="margin:2px 0 0">Computed live from the current <b>School</b> filter, comparing the same <b>Mar 15 &ndash; Jun 15</b> window in each year. Ignores the date filter above. See <b>Definitions</b> above for how Enrolled is counted.</div>
       <ul id="findings"></ul>
     </div>
   </section>
@@ -227,8 +227,8 @@ HTML = r"""<!DOCTYPE html>
   </section>
 
   <section>
-    <h2>Center-added vs. Webform leads &mdash; Mar 15 → Jun 15</h2>
-    <p class="note">&ldquo;Added by Center&rdquo; = staff-entered (walk-in / call / referral logged by the team). &ldquo;Created from Form&rdquo; = online webform. Respects the School filter.</p>
+    <h2>Webform vs. Center-added leads &mdash; Mar 15 → Jun 15</h2>
+    <p class="note">Classified by the <b>&ldquo;Added By First Name&rdquo;</b> field: empty = <b>Webform</b> (online form), a staff name present = <b>Center-added</b> (walk-in / call / referral logged by the team). Respects the School filter.</p>
     <div class="grid2" style="grid-template-columns:1.3fr 1fr">
       <div class="panel"><div class="scrollx"><table id="srcCmp"></table></div></div>
       <div class="findings"><b>What it says</b><ul id="srcInf"></ul></div>
@@ -241,27 +241,6 @@ HTML = r"""<!DOCTYPE html>
     <div class="grid2" style="grid-template-columns:1.3fr 1fr">
       <div class="panel"><div class="scrollx"><table id="chCmp"></table></div></div>
       <div class="findings"><b>What it says</b><ul id="chInf"></ul></div>
-    </div>
-  </section>
-
-  <section>
-    <h2>Monthly breakdown &mdash; status by month</h2>
-    <p class="note">Rows = month the lead was created. Columns = the lead's current status. Respects both filters.</p>
-    <div class="panel"><div class="scrollx"><table id="monthly"></table></div></div>
-  </section>
-
-  <section>
-    <div class="grid2">
-      <div>
-        <h2>Leads &amp; enrollments by month</h2>
-        <p class="note">Trend of new leads vs. enrolled, current filters.</p>
-        <div class="panel" style="padding:14px"><div id="trend"></div></div>
-      </div>
-      <div>
-        <h2>Funnel snapshot</h2>
-        <p class="note">Current status mix for the filtered records.</p>
-        <div class="panel bars" id="funnel" style="padding:14px"></div>
-      </div>
     </div>
   </section>
 
@@ -378,32 +357,28 @@ function render(){
     `Showing <b>${fmt(rows.length)}</b> records · School: <b>${state.school==='all'?'All':C[+state.school]}</b> · `+
     `${state.from} → ${state.to}`;
 
-  // KPIs
-  let leads=rows.length, tours=0, enr=0, dec=0, inq=0;
-  for(const r of rows){ if(isTour(r[1]))tours++; if(isEnrolled(r[1]))enr++; if(r[1]===DECLINED)dec++; if(isInquiry(r[1]))inq++; }
+  // KPIs — Total leads & Enrolled only (a lead sits in one status, so intermediate
+  // stages like Tour/Waitlist undercount and are misleading)
+  let leads=rows.length, enr=0;
+  for(const r of rows){ if(isEnrolled(r[1]))enr++; }
   const conv=pct(enr,leads);
   const kpis=[
     ['Total leads',fmt(leads),''],
-    ['Tours done',fmt(tours),''],
     ['Enrolled ✓ (success)',fmt(enr),''],
-    ['Declined',fmt(dec),''],
     ['Lead→Enrolled %',conv.toFixed(1)+'%',''],
   ];
   document.getElementById('kpis').innerHTML = kpis.map(k=>
     `<div class="card"><div class="k">${k[0]}</div><div class="v">${k[1]}</div></div>`).join('')
     + `<div class="card" style="grid-column:1/-1;background:var(--panel2)"><div class="k">Definitions</div>`
     + `<div style="font-size:12.5px;margin-top:4px;line-height:1.6">`
-    + `<b>Tours done</b> = Tour&nbsp;-&nbsp;Toured + Tour&nbsp;-&nbsp;Virtual &nbsp;·&nbsp; `
     + `<b style="color:var(--good)">Enrolled (success)</b> = Enrollment&nbsp;-&nbsp;Enrolled + Withdrawn &nbsp;·&nbsp; `
-    + `<b>Lead&rarr;Enrolled %</b> = Enrolled &divide; Total leads`
+    + `<b>Lead&rarr;Enrolled %</b> = Enrolled &divide; Total leads &nbsp;·&nbsp; `
+    + `<span style="color:var(--muted)">Only Total leads &amp; Enrolled are shown — a lead is bucketed under a single current status, so mid-funnel counts (Tour, Waitlist) would understate reality.</span>`
     + `</div></div>`;
 
   renderFindings();
   renderYoY();
   renderCompare();
-  renderMonthly(rows);
-  renderTrend(rows);
-  renderFunnel(rows);
   renderBars('source', rows, 3, SRC);
   renderBars('hear', rows, 4, HEAR);
   renderSchools();
@@ -448,8 +423,6 @@ function renderFindings(){
   const dc=delta(b.conv,a.conv);
   const flat=Math.abs(b.conv-a.conv)<1;
   li.push(`<li><b>Lead&rarr;Enrolled conversion</b> ${a.conv.toFixed(1)}% &rarr; ${b.conv.toFixed(1)}% ${tag(dc)}. ${flat?'Essentially unchanged — the team converts the same share of leads; they just have fewer leads to work.':(b.conv>=a.conv?'Improved — a higher share of a smaller pool is converting.':'Softened — closing got harder, not just thinner demand.')}</li>`);
-  const dt=d(b.tours,a.tours);
-  li.push(`<li><b>Tours done</b> (Toured + Virtual): ${fmt(a.tours)} &rarr; ${fmt(b.tours)} ${tag(dt)}. <b>Declined:</b> ${fmt(a.dec)} &rarr; ${fmt(b.dec)} ${tag(d(b.dec,a.dec))}.</li>`);
   const blMsg = flat
     ? 'with conversion flat, the way to grow enrollments is to <b>rebuild lead volume</b> (top of funnel), not chase a better close rate.'
     : (b.conv>a.conv
@@ -461,7 +434,7 @@ function renderFindings(){
 
 function renderYoY(){
   const ys=compYears();
-  const rowsDef=[['Leads','leads'],['Tours done','tours'],['Enrolled (success)','enr'],['Declined','dec'],['Conversion %','conv']];
+  const rowsDef=[['Leads','leads'],['Enrolled (success)','enr'],['Conversion %','conv']];
   const M=ys.map(y=>ytdMetrics(y));
   let h='<thead><tr><th>Metric (Mar 15–Jun 15)</th>'+ys.map(y=>`<th>${y}</th>`).join('')+'<th>YoY</th></tr></thead><tbody>';
   rowsDef.forEach(([lbl,key])=>{
@@ -551,14 +524,14 @@ function renderSchools(){
   const f=state.from,t=state.to;
   const rows=R.filter(r=>r[2]>=f&&r[2]<=t);
   const per={};
-  for(const r of rows){ const o=per[r[0]]=per[r[0]]||{l:0,tour:0,enr:0,dec:0};
-    o.l++; if(isTour(r[1]))o.tour++; if(isEnrolled(r[1]))o.enr++; if(r[1]===DECLINED)o.dec++; }
+  for(const r of rows){ const o=per[r[0]]=per[r[0]]||{l:0,enr:0};
+    o.l++; if(isEnrolled(r[1]))o.enr++; }
   const ids=Object.keys(per).map(Number).sort((a,b)=>per[b].l-per[a].l);
-  let h='<thead><tr><th>School</th><th>Leads</th><th>Tours done</th><th>Enrolled</th><th>Declined</th><th>Conv %</th></tr></thead><tbody>';
-  let T={l:0,tour:0,enr:0,dec:0};
-  for(const id of ids){ const o=per[id]; T.l+=o.l;T.tour+=o.tour;T.enr+=o.enr;T.dec+=o.dec;
-    h+=`<tr><td>${C[id]}</td><td>${fmt(o.l)}</td><td>${fmt(o.tour)}</td><td>${fmt(o.enr)}</td><td>${fmt(o.dec)}</td><td>${pct(o.enr,o.l).toFixed(1)}%</td></tr>`; }
-  h+=`<tr class="totrow"><td>All</td><td>${fmt(T.l)}</td><td>${fmt(T.tour)}</td><td>${fmt(T.enr)}</td><td>${fmt(T.dec)}</td><td>${pct(T.enr,T.l).toFixed(1)}%</td></tr></tbody>`;
+  let h='<thead><tr><th>School</th><th>Leads</th><th>Enrolled</th><th>Conv %</th></tr></thead><tbody>';
+  let T={l:0,enr:0};
+  for(const id of ids){ const o=per[id]; T.l+=o.l;T.enr+=o.enr;
+    h+=`<tr><td>${C[id]}</td><td>${fmt(o.l)}</td><td>${fmt(o.enr)}</td><td>${pct(o.enr,o.l).toFixed(1)}%</td></tr>`; }
+  h+=`<tr class="totrow"><td>All</td><td>${fmt(T.l)}</td><td>${fmt(T.enr)}</td><td>${pct(T.enr,T.l).toFixed(1)}%</td></tr></tbody>`;
   document.getElementById('schools').innerHTML=h;
 }
 
@@ -617,15 +590,14 @@ function renderCompare(){
   si.push(`<li class="flat" style="color:var(--muted)">Centers with a tiny ${py} base (e.g. Strathmore, Victoria) swing wildly on percentages — read their counts, not the %.</li>`);
   document.getElementById('schoolInf').innerHTML=si.join('');
 
-  // ---- CENTER vs WEBFORM (respects school filter) ----
-  const FORM=SRC.indexOf('Created from Form'), CEN=SRC.indexOf('Added by Center');
+  // ---- WEBFORM vs CENTER-ADDED (by "Added By First Name": empty => webform) ----
   function srcAgg(year){const rs=winRows(year);let f={l:0,e:0},c={l:0,e:0};
-    for(const r of rs){const o=r[3]===CEN?c:f;o.l++;if(isEnrolled(r[1]))o.e++;}return {f,c,n:rs.length};}
+    for(const r of rs){const o=r[6]===1?f:c;o.l++;if(isEnrolled(r[1]))o.e++;}return {f,c,n:rs.length};}
   const sa=srcAgg(py), sb=srcAgg(cy);
   const rowSrc=(lbl,a,b)=>`<tr><td>${lbl}</td><td>${fmt(a.l)}</td><td>${fmt(b.l)}</td><td class="${delta(b.l,a.l).c}">${delta(b.l,a.l).t}</td><td>${fmt(a.e)}</td><td>${fmt(b.e)}</td><td>${pct(a.e,a.l).toFixed(0)}%</td><td>${pct(b.e,b.l).toFixed(0)}%</td></tr>`;
   let sh=`<thead><tr><th>Source</th><th>Leads ${py}</th><th>Leads ${cy}</th><th>Δ</th><th>Enr ${py}</th><th>Enr ${cy}</th><th>Conv ${py}</th><th>Conv ${cy}</th></tr></thead><tbody>`;
-  sh+=rowSrc('Webform (Created from Form)',sa.f,sb.f);
-  sh+=rowSrc('Center-added (staff)',sa.c,sb.c);
+  sh+=rowSrc('Webform (no staff name)',sa.f,sb.f);
+  sh+=rowSrc('Center-added (staff name)',sa.c,sb.c);
   sh+='</tbody>';
   document.getElementById('srcCmp').innerHTML=sh;
   const formShare=pct(sb.f.l,sb.n), cenConvB=pct(sb.c.e,sb.c.l), formConvB=pct(sb.f.e,sb.f.l);
