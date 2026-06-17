@@ -245,29 +245,14 @@ HTML = r"""<!DOCTYPE html>
   </section>
 
   <section>
-    <div class="grid2">
-      <div>
-        <h2>Lead source</h2>
-        <p class="note">How records entered the CRM.</p>
-        <div class="panel bars" id="source" style="padding:14px"></div>
-      </div>
-      <div>
-        <h2>How did you hear about us?</h2>
-        <p class="note">Top marketing channels.</p>
-        <div class="panel bars" id="hear" style="padding:14px"></div>
-      </div>
-    </div>
+    <h2>How did you hear about us?</h2>
+    <p class="note">Top marketing channels for the filtered records.</p>
+    <div class="panel bars" id="hear" style="padding:14px;max-width:640px"></div>
   </section>
 
   <section>
-    <h2>School comparison</h2>
-    <p class="note">Key metrics per school for the current date filter (ignores the School filter).</p>
-    <div class="panel"><div class="scrollx"><table id="schools"></table></div></div>
-  </section>
-
-  <section>
-    <h2>Center-wise &mdash; leads by Webform vs. Added at Center</h2>
-    <p class="note">Based on the <b>&ldquo;Added By First Name&rdquo;</b> field: <b>Webform</b> = no staff name on the record (self-serve online form) vs. <b>At Center</b> = a staff member&rsquo;s name is present (walk-in / call / referral logged by the team). Uses the current date filter; ignores the School filter so every center shows.</p>
+    <h2>Center-wise &mdash; leads by &ldquo;Added By First Name&rdquo;</h2>
+    <p class="note">Split by the <b>&ldquo;Added By First Name&rdquo;</b> field: <b>Webform</b> = field is empty (self-serve online form) vs. <b>Added at Center</b> = a staff first name is present (walk-in / call / referral logged by the team). Uses the current date filter; ignores the School filter so every center shows.</p>
     <div class="panel"><div class="scrollx"><table id="centerSrc"></table></div></div>
   </section>
 </div>
@@ -364,24 +349,22 @@ function render(){
   const conv=pct(enr,leads);
   const kpis=[
     ['Total leads',fmt(leads),''],
-    ['Enrolled ✓ (success)',fmt(enr),''],
-    ['Lead→Enrolled %',conv.toFixed(1)+'%',''],
+    ['Success (Enrolled + Withdrawn)',fmt(enr),''],
+    ['Lead→Success %',conv.toFixed(1)+'%',''],
   ];
   document.getElementById('kpis').innerHTML = kpis.map(k=>
     `<div class="card"><div class="k">${k[0]}</div><div class="v">${k[1]}</div></div>`).join('')
     + `<div class="card" style="grid-column:1/-1;background:var(--panel2)"><div class="k">Definitions</div>`
     + `<div style="font-size:12.5px;margin-top:4px;line-height:1.6">`
-    + `<b style="color:var(--good)">Enrolled (success)</b> = Enrollment&nbsp;-&nbsp;Enrolled + Withdrawn &nbsp;·&nbsp; `
-    + `<b>Lead&rarr;Enrolled %</b> = Enrolled &divide; Total leads &nbsp;·&nbsp; `
-    + `<span style="color:var(--muted)">Only Total leads &amp; Enrolled are shown — a lead is bucketed under a single current status, so mid-funnel counts (Tour, Waitlist) would understate reality.</span>`
+    + `<b style="color:var(--good)">Success</b> = Enrollment&nbsp;-&nbsp;Enrolled + Withdrawn &nbsp;·&nbsp; `
+    + `<b>Lead&rarr;Success %</b> = Success &divide; Total leads &nbsp;·&nbsp; `
+    + `<span style="color:var(--muted)">Only Total leads &amp; Success are shown — a lead is bucketed under a single current status, so mid-funnel counts (Tour, Waitlist) would understate reality.</span>`
     + `</div></div>`;
 
   renderFindings();
   renderYoY();
   renderCompare();
-  renderBars('source', rows, 3, SRC);
   renderBars('hear', rows, 4, HEAR);
-  renderSchools();
   renderCenterSource();
 }
 
@@ -419,10 +402,10 @@ function renderFindings(){
   else if(b.enr<a.enr && leadDrop-enrDrop>5) enrMsg='Down, but by less than leads — enrollments held up better than the lead drop, because conversion rose.';
   else if(b.enr<a.enr) enrMsg='Down roughly in line with leads — mainly a volume problem.';
   else enrMsg='Flat.';
-  li.push(`<li><b>Enrolled</b> (Enrolled + Withdrawn) went from ${fmt(a.enr)} to ${fmt(b.enr)} ${tag(de)}. ${enrMsg}</li>`);
+  li.push(`<li><b>Success</b> (Enrolled + Withdrawn) went from ${fmt(a.enr)} to ${fmt(b.enr)} ${tag(de)}. ${enrMsg}</li>`);
   const dc=delta(b.conv,a.conv);
   const flat=Math.abs(b.conv-a.conv)<1;
-  li.push(`<li><b>Lead&rarr;Enrolled conversion</b> ${a.conv.toFixed(1)}% &rarr; ${b.conv.toFixed(1)}% ${tag(dc)}. ${flat?'Essentially unchanged — the team converts the same share of leads; they just have fewer leads to work.':(b.conv>=a.conv?'Improved — a higher share of a smaller pool is converting.':'Softened — closing got harder, not just thinner demand.')}</li>`);
+  li.push(`<li><b>Lead&rarr;Success conversion</b> ${a.conv.toFixed(1)}% &rarr; ${b.conv.toFixed(1)}% ${tag(dc)}. ${flat?'Essentially unchanged — the team converts the same share of leads; they just have fewer leads to work.':(b.conv>=a.conv?'Improved — a higher share of a smaller pool is converting.':'Softened — closing got harder, not just thinner demand.')}</li>`);
   const blMsg = flat
     ? 'with conversion flat, the way to grow enrollments is to <b>rebuild lead volume</b> (top of funnel), not chase a better close rate.'
     : (b.conv>a.conv
@@ -434,7 +417,7 @@ function renderFindings(){
 
 function renderYoY(){
   const ys=compYears();
-  const rowsDef=[['Leads','leads'],['Enrolled (success)','enr'],['Conversion %','conv']];
+  const rowsDef=[['Leads','leads'],['Success (Enrolled + Withdrawn)','enr'],['Conversion %','conv']];
   const M=ys.map(y=>ytdMetrics(y));
   let h='<thead><tr><th>Metric (Mar 15–Jun 15)</th>'+ys.map(y=>`<th>${y}</th>`).join('')+'<th>YoY</th></tr></thead><tbody>';
   rowsDef.forEach(([lbl,key])=>{
@@ -569,7 +552,7 @@ function renderCompare(){
   }
   const ids=[...new Set([...Object.keys(A),...Object.keys(B)].map(Number))]
     .sort((x,y)=>(B[y]?.l||0)-(B[x]?.l||0));
-  let h=`<thead><tr><th>School</th><th>Leads ${py}</th><th>Leads ${cy}</th><th>Δ</th><th>Enr ${py}</th><th>Enr ${cy}</th><th>Δ</th><th>Conv ${cy}</th></tr></thead><tbody>`;
+  let h=`<thead><tr><th>School</th><th>Leads ${py}</th><th>Leads ${cy}</th><th>Δ</th><th>Success ${py}</th><th>Success ${cy}</th><th>Δ</th><th>Conv ${cy}</th></tr></thead><tbody>`;
   let TA={l:0,e:0},TB={l:0,e:0};
   for(const id of ids){const a=A[id]||{l:0,e:0},b=B[id]||{l:0,e:0};
     TA.l+=a.l;TA.e+=a.e;TB.l+=b.l;TB.e+=b.e;
@@ -595,7 +578,7 @@ function renderCompare(){
     for(const r of rs){const o=r[6]===1?f:c;o.l++;if(isEnrolled(r[1]))o.e++;}return {f,c,n:rs.length};}
   const sa=srcAgg(py), sb=srcAgg(cy);
   const rowSrc=(lbl,a,b)=>`<tr><td>${lbl}</td><td>${fmt(a.l)}</td><td>${fmt(b.l)}</td><td class="${delta(b.l,a.l).c}">${delta(b.l,a.l).t}</td><td>${fmt(a.e)}</td><td>${fmt(b.e)}</td><td>${pct(a.e,a.l).toFixed(0)}%</td><td>${pct(b.e,b.l).toFixed(0)}%</td></tr>`;
-  let sh=`<thead><tr><th>Source</th><th>Leads ${py}</th><th>Leads ${cy}</th><th>Δ</th><th>Enr ${py}</th><th>Enr ${cy}</th><th>Conv ${py}</th><th>Conv ${cy}</th></tr></thead><tbody>`;
+  let sh=`<thead><tr><th>Source</th><th>Leads ${py}</th><th>Leads ${cy}</th><th>Δ</th><th>Success ${py}</th><th>Success ${cy}</th><th>Conv ${py}</th><th>Conv ${cy}</th></tr></thead><tbody>`;
   sh+=rowSrc('Webform (no staff name)',sa.f,sb.f);
   sh+=rowSrc('Center-added (staff name)',sa.c,sb.c);
   sh+='</tbody>';
