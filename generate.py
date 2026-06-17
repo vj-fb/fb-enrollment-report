@@ -196,7 +196,7 @@ HTML = r"""<!DOCTYPE html>
   <section>
     <div class="findings">
       <h2 style="margin:0 0 2px">Key findings — Mar 15 → Jun 15, 2025 vs 2026</h2>
-      <div class="note" style="margin:2px 0 0">Computed live from the current <b>School</b> filter, comparing the same <b>Mar 15 &ndash; Jun 15</b> window in each year. Ignores the date filter above.</div>
+      <div class="note" style="margin:2px 0 0">Computed live from the current <b>School</b> filter, comparing the same <b>Mar 15 &ndash; Jun 15</b> window in each year. Ignores the date filter above. See <b>Definitions</b> above for how Enrolled &amp; Tours are counted.</div>
       <ul id="findings"></ul>
     </div>
   </section>
@@ -291,10 +291,14 @@ const R = DATA.rows;            // [centerIdx, statusIdx, 'YYYY-MM-DD', srcIdx, 
 const S = DATA.statuses, C = DATA.centers, SRC = DATA.sources, HEAR = DATA.hears;
 const ORDER = DATA.statusOrder;
 const sIdx = s => S.indexOf(s);
-const ENROLLED = sIdx("Enrollment - Enrolled");
-const WLJOIN = sIdx("Waitlist - Joined");
+// ---- Metric definitions (per user spec) ----
+// Enrolled / success = Waitlist-Joined + Enrollment-Enrolled + Withdrawn
+const ENR_SET = ["Waitlist - Joined","Enrollment - Enrolled","Withdrawn"].map(sIdx).filter(i=>i>=0);
+const isEnrolled = i => ENR_SET.includes(i);
+// Tours done = Tour-Toured + Tour-Virtual (an actual visit happened)
+const TOURDONE_SET = ["Tour - Toured","Tour - Virtual"].map(sIdx).filter(i=>i>=0);
+const isTour = i => TOURDONE_SET.includes(i);
 const DECLINED = sIdx("Declined");
-const isTour = i => S[i] && S[i].startsWith("Tour");
 const isInquiry = i => S[i] && S[i].startsWith("Inquiry");
 
 document.getElementById('genmeta').textContent =
@@ -367,19 +371,24 @@ function render(){
     `${state.from} → ${state.to}`;
 
   // KPIs
-  let leads=rows.length, tours=0, wl=0, enr=0, dec=0, inq=0;
-  for(const r of rows){ if(isTour(r[1]))tours++; if(r[1]===WLJOIN)wl++; if(r[1]===ENROLLED)enr++; if(r[1]===DECLINED)dec++; if(isInquiry(r[1]))inq++; }
+  let leads=rows.length, tours=0, enr=0, dec=0, inq=0;
+  for(const r of rows){ if(isTour(r[1]))tours++; if(isEnrolled(r[1]))enr++; if(r[1]===DECLINED)dec++; if(isInquiry(r[1]))inq++; }
   const conv=pct(enr,leads);
   const kpis=[
     ['Total leads',fmt(leads),''],
-    ['Tours / walk-ins',fmt(tours),''],
-    ['Waitlist joined',fmt(wl),''],
-    ['Enrolled',fmt(enr),''],
+    ['Tours done',fmt(tours),''],
+    ['Enrolled ✓ (success)',fmt(enr),''],
     ['Declined',fmt(dec),''],
-    ['Lead→Enrolled',conv.toFixed(1)+'%',''],
+    ['Lead→Enrolled %',conv.toFixed(1)+'%',''],
   ];
   document.getElementById('kpis').innerHTML = kpis.map(k=>
-    `<div class="card"><div class="k">${k[0]}</div><div class="v">${k[1]}</div></div>`).join('');
+    `<div class="card"><div class="k">${k[0]}</div><div class="v">${k[1]}</div></div>`).join('')
+    + `<div class="card" style="grid-column:1/-1;background:var(--panel2)"><div class="k">Definitions</div>`
+    + `<div style="font-size:12.5px;margin-top:4px;line-height:1.6">`
+    + `<b>Tours done</b> = Tour&nbsp;-&nbsp;Toured + Tour&nbsp;-&nbsp;Virtual &nbsp;·&nbsp; `
+    + `<b style="color:var(--good)">Enrolled (success)</b> = Waitlist&nbsp;-&nbsp;Joined + Enrollment&nbsp;-&nbsp;Enrolled + Withdrawn &nbsp;·&nbsp; `
+    + `<b>Lead&rarr;Enrolled %</b> = Enrolled &divide; Total leads`
+    + `</div></div>`;
 
   renderFindings();
   renderYoY();
@@ -404,9 +413,9 @@ function ytdLabel(){ return 'Jun 15'; }
 function ytdMetrics(year){
   const [f,t]=ytdWindow(year);
   const rs=schoolRows().filter(r=>r[2]>=f&&r[2]<=t);
-  let leads=rs.length,tours=0,wl=0,enr=0,dec=0;
-  for(const r of rs){ if(isTour(r[1]))tours++; if(r[1]===WLJOIN)wl++; if(r[1]===ENROLLED)enr++; if(r[1]===DECLINED)dec++; }
-  return {leads,tours,wl,enr,dec,conv:pct(enr,leads)};
+  let leads=rs.length,tours=0,enr=0,dec=0;
+  for(const r of rs){ if(isTour(r[1]))tours++; if(isEnrolled(r[1]))enr++; if(r[1]===DECLINED)dec++; }
+  return {leads,tours,enr,dec,conv:pct(enr,leads)};
 }
 
 function renderFindings(){
@@ -420,18 +429,19 @@ function renderFindings(){
   const dl=d(b.leads,a.leads);
   li.push(`<li><b>Leads ${dl.c==='down'?'fell':'changed'}</b> from ${fmt(a.leads)} (${py}) to ${fmt(b.leads)} (${cy}) ${tag(dl)}. ${dl.c==='down'?'Fewer people entered the funnel this season — the top-of-funnel is the problem, not closing.':''}</li>`);
   const de=d(b.enr,a.enr);
-  li.push(`<li><b>Enrollments</b> went from ${fmt(a.enr)} to ${fmt(b.enr)} ${tag(de)}. ${b.enr>a.enr?'Up despite fewer leads — the team closed more from a smaller pool.':(Math.abs(b.enr-a.enr)<=Math.max(3,a.enr*0.1)?'Roughly flat — held up far better than leads.':'')}</li>`);
+  li.push(`<li><b>Enrolled</b> (Waitlist-Joined + Enrolled + Withdrawn) went from ${fmt(a.enr)} to ${fmt(b.enr)} ${tag(de)}. ${b.enr<a.enr?'Down roughly in line with leads — the drop is a volume problem, not a closing problem.':(b.enr>a.enr?'Up despite fewer leads.':'Flat.')}</li>`);
   const dc=delta(b.conv,a.conv);
-  li.push(`<li><b>Lead&rarr;Enrolled conversion</b> moved from ${a.conv.toFixed(1)}% to ${b.conv.toFixed(1)}% ${tag(dc)}. ${b.conv>=a.conv?'Sharply better conversion is carrying enrollments.':'Conversion also softened.'}</li>`);
-  const dw=d(b.wl,a.wl);
-  li.push(`<li><b>Waitlist joins:</b> ${fmt(a.wl)} &rarr; ${fmt(b.wl)} ${tag(dw)}. <b>Declined:</b> ${fmt(a.dec)} &rarr; ${fmt(b.dec)} ${tag(d(b.dec,a.dec))}.</li>`);
-  li.push(`<li class="flat" style="color:var(--muted)"><b>Caveat — read conversion with care:</b> &ldquo;Current Status&rdquo; is each lead&rsquo;s status <i>today</i>. The ${py} cohort has had a full year to be marked Declined; the ${cy} cohort is fresh, so its Declines (and final conversion) are not settled yet. Expect ${cy} enrollments to rise <i>and</i> ${cy} conversion to come down somewhat as that cohort matures.</li>`);
+  const flat=Math.abs(b.conv-a.conv)<1;
+  li.push(`<li><b>Lead&rarr;Enrolled conversion</b> ${a.conv.toFixed(1)}% &rarr; ${b.conv.toFixed(1)}% ${tag(dc)}. ${flat?'Essentially unchanged — the team converts the same share of leads; they just have fewer leads to work.':(b.conv>=a.conv?'Improved.':'Softened.')}</li>`);
+  const dt=d(b.tours,a.tours);
+  li.push(`<li><b>Tours done</b> (Toured + Virtual): ${fmt(a.tours)} &rarr; ${fmt(b.tours)} ${tag(dt)}. <b>Declined:</b> ${fmt(a.dec)} &rarr; ${fmt(b.dec)} ${tag(d(b.dec,a.dec))}.</li>`);
+  li.push(`<li class="flat" style="color:var(--muted)"><b>Bottom line:</b> with conversion flat, the way to grow enrollments is to <b>rebuild lead volume</b> (top of funnel), not chase a better close rate. <b>Caveat:</b> status is each lead&rsquo;s state <i>today</i>; the ${cy} cohort is still maturing, so its counts will keep shifting.</li>`);
   document.getElementById('findings').innerHTML=li.join('');
 }
 
 function renderYoY(){
   const ys=compYears();
-  const rowsDef=[['Leads','leads'],['Tours / walk-ins','tours'],['Waitlist joined','wl'],['Enrolled','enr'],['Declined','dec'],['Conversion %','conv']];
+  const rowsDef=[['Leads','leads'],['Tours done','tours'],['Enrolled (success)','enr'],['Declined','dec'],['Conversion %','conv']];
   const M=ys.map(y=>ytdMetrics(y));
   let h='<thead><tr><th>Metric (Mar 15–Jun 15)</th>'+ys.map(y=>`<th>${y}</th>`).join('')+'<th>YoY</th></tr></thead><tbody>';
   rowsDef.forEach(([lbl,key])=>{
@@ -477,7 +487,7 @@ function renderMonthly(rows){
 
 function renderTrend(rows){
   const months={};
-  for(const r of rows){ const ym=r[2].slice(0,7); const o=months[ym]=months[ym]||{l:0,e:0}; o.l++; if(r[1]===ENROLLED)o.e++; }
+  for(const r of rows){ const ym=r[2].slice(0,7); const o=months[ym]=months[ym]||{l:0,e:0}; o.l++; if(isEnrolled(r[1]))o.e++; }
   const ms=Object.keys(months).sort();
   if(!ms.length){ document.getElementById('trend').innerHTML='<div style="color:var(--muted)">No data.</div>'; return; }
   const W=Math.max(560, ms.length*42), H=200, pad=30;
@@ -521,14 +531,14 @@ function renderSchools(){
   const f=state.from,t=state.to;
   const rows=R.filter(r=>r[2]>=f&&r[2]<=t);
   const per={};
-  for(const r of rows){ const o=per[r[0]]=per[r[0]]||{l:0,tour:0,wl:0,enr:0,dec:0};
-    o.l++; if(isTour(r[1]))o.tour++; if(r[1]===WLJOIN)o.wl++; if(r[1]===ENROLLED)o.enr++; if(r[1]===DECLINED)o.dec++; }
+  for(const r of rows){ const o=per[r[0]]=per[r[0]]||{l:0,tour:0,enr:0,dec:0};
+    o.l++; if(isTour(r[1]))o.tour++; if(isEnrolled(r[1]))o.enr++; if(r[1]===DECLINED)o.dec++; }
   const ids=Object.keys(per).map(Number).sort((a,b)=>per[b].l-per[a].l);
-  let h='<thead><tr><th>School</th><th>Leads</th><th>Tours</th><th>Waitlist</th><th>Enrolled</th><th>Declined</th><th>Conv %</th></tr></thead><tbody>';
-  let T={l:0,tour:0,wl:0,enr:0,dec:0};
-  for(const id of ids){ const o=per[id]; T.l+=o.l;T.tour+=o.tour;T.wl+=o.wl;T.enr+=o.enr;T.dec+=o.dec;
-    h+=`<tr><td>${C[id]}</td><td>${fmt(o.l)}</td><td>${fmt(o.tour)}</td><td>${fmt(o.wl)}</td><td>${fmt(o.enr)}</td><td>${fmt(o.dec)}</td><td>${pct(o.enr,o.l).toFixed(1)}%</td></tr>`; }
-  h+=`<tr class="totrow"><td>All</td><td>${fmt(T.l)}</td><td>${fmt(T.tour)}</td><td>${fmt(T.wl)}</td><td>${fmt(T.enr)}</td><td>${fmt(T.dec)}</td><td>${pct(T.enr,T.l).toFixed(1)}%</td></tr></tbody>`;
+  let h='<thead><tr><th>School</th><th>Leads</th><th>Tours done</th><th>Enrolled</th><th>Declined</th><th>Conv %</th></tr></thead><tbody>';
+  let T={l:0,tour:0,enr:0,dec:0};
+  for(const id of ids){ const o=per[id]; T.l+=o.l;T.tour+=o.tour;T.enr+=o.enr;T.dec+=o.dec;
+    h+=`<tr><td>${C[id]}</td><td>${fmt(o.l)}</td><td>${fmt(o.tour)}</td><td>${fmt(o.enr)}</td><td>${fmt(o.dec)}</td><td>${pct(o.enr,o.l).toFixed(1)}%</td></tr>`; }
+  h+=`<tr class="totrow"><td>All</td><td>${fmt(T.l)}</td><td>${fmt(T.tour)}</td><td>${fmt(T.enr)}</td><td>${fmt(T.dec)}</td><td>${pct(T.enr,T.l).toFixed(1)}%</td></tr></tbody>`;
   document.getElementById('schools').innerHTML=h;
 }
 
@@ -545,8 +555,8 @@ function renderCompare(){
   const A={},B={};
   const [fa,ta]=ytdWindow(py),[fb,tb]=ytdWindow(cy);
   for(const r of R){
-    if(r[2]>=fa&&r[2]<=ta){const o=A[r[0]]=A[r[0]]||{l:0,e:0};o.l++;if(r[1]===ENROLLED)o.e++;}
-    if(r[2]>=fb&&r[2]<=tb){const o=B[r[0]]=B[r[0]]||{l:0,e:0};o.l++;if(r[1]===ENROLLED)o.e++;}
+    if(r[2]>=fa&&r[2]<=ta){const o=A[r[0]]=A[r[0]]||{l:0,e:0};o.l++;if(isEnrolled(r[1]))o.e++;}
+    if(r[2]>=fb&&r[2]<=tb){const o=B[r[0]]=B[r[0]]||{l:0,e:0};o.l++;if(isEnrolled(r[1]))o.e++;}
   }
   const ids=[...new Set([...Object.keys(A),...Object.keys(B)].map(Number))]
     .sort((x,y)=>(B[y]?.l||0)-(B[x]?.l||0));
@@ -574,7 +584,7 @@ function renderCompare(){
   // ---- CENTER vs WEBFORM (respects school filter) ----
   const FORM=SRC.indexOf('Created from Form'), CEN=SRC.indexOf('Added by Center');
   function srcAgg(year){const rs=winRows(year);let f={l:0,e:0},c={l:0,e:0};
-    for(const r of rs){const o=r[3]===CEN?c:f;o.l++;if(r[1]===ENROLLED)o.e++;}return {f,c,n:rs.length};}
+    for(const r of rs){const o=r[3]===CEN?c:f;o.l++;if(isEnrolled(r[1]))o.e++;}return {f,c,n:rs.length};}
   const sa=srcAgg(py), sb=srcAgg(cy);
   const rowSrc=(lbl,a,b)=>`<tr><td>${lbl}</td><td>${fmt(a.l)}</td><td>${fmt(b.l)}</td><td class="${delta(b.l,a.l).c}">${delta(b.l,a.l).t}</td><td>${fmt(a.e)}</td><td>${fmt(b.e)}</td><td>${pct(a.e,a.l).toFixed(0)}%</td><td>${pct(b.e,b.l).toFixed(0)}%</td></tr>`;
   let sh=`<thead><tr><th>Source</th><th>Leads ${py}</th><th>Leads ${cy}</th><th>Δ</th><th>Enr ${py}</th><th>Enr ${cy}</th><th>Conv ${py}</th><th>Conv ${cy}</th></tr></thead><tbody>`;
