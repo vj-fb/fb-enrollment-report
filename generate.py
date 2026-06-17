@@ -283,6 +283,12 @@ HTML = r"""<!DOCTYPE html>
     <p class="note">Key metrics per school for the current date filter (ignores the School filter).</p>
     <div class="panel"><div class="scrollx"><table id="schools"></table></div></div>
   </section>
+
+  <section>
+    <h2>Center-wise &mdash; leads by Webform vs. Added at Center</h2>
+    <p class="note">How each center&rsquo;s leads were created: <b>Webform</b> = online form submission (&ldquo;Created from Form&rdquo;) vs. <b>At Center</b> = staff-entered (&ldquo;Added by Center&rdquo; &mdash; walk-in / call / referral logged by the team). Uses the current date filter; ignores the School filter so every center shows.</p>
+    <div class="panel"><div class="scrollx"><table id="centerSrc"></table></div></div>
+  </section>
 </div>
 
 <script>
@@ -399,6 +405,7 @@ function render(){
   renderBars('source', rows, 3, SRC);
   renderBars('hear', rows, 4, HEAR);
   renderSchools();
+  renderCenterSource();
 }
 
 // ---- like-for-like helpers (school filter only) ----
@@ -551,6 +558,23 @@ function renderSchools(){
     h+=`<tr><td>${C[id]}</td><td>${fmt(o.l)}</td><td>${fmt(o.tour)}</td><td>${fmt(o.enr)}</td><td>${fmt(o.dec)}</td><td>${pct(o.enr,o.l).toFixed(1)}%</td></tr>`; }
   h+=`<tr class="totrow"><td>All</td><td>${fmt(T.l)}</td><td>${fmt(T.tour)}</td><td>${fmt(T.enr)}</td><td>${fmt(T.dec)}</td><td>${pct(T.enr,T.l).toFixed(1)}%</td></tr></tbody>`;
   document.getElementById('schools').innerHTML=h;
+}
+
+function renderCenterSource(){
+  const f=state.from,t=state.to;
+  const FORM=SRC.indexOf('Created from Form'), CEN=SRC.indexOf('Added by Center');
+  const rows=R.filter(r=>r[2]>=f&&r[2]<=t);
+  const per={};
+  for(const r of rows){ const o=per[r[0]]=per[r[0]]||{web:0,cen:0,oth:0};
+    if(r[3]===FORM)o.web++; else if(r[3]===CEN)o.cen++; else o.oth++; }
+  const ids=Object.keys(per).map(Number).sort((a,b)=>(per[b].web+per[b].cen+per[b].oth)-(per[a].web+per[a].cen+per[a].oth));
+  let h='<thead><tr><th>Center</th><th>Webform</th><th>At Center</th><th>Total</th><th>% Webform</th></tr></thead><tbody>';
+  let T={web:0,cen:0,oth:0};
+  for(const id of ids){ const o=per[id]; const tot=o.web+o.cen+o.oth; T.web+=o.web;T.cen+=o.cen;T.oth+=o.oth;
+    h+=`<tr><td>${C[id]}</td><td>${fmt(o.web)}</td><td>${fmt(o.cen)}</td><td>${fmt(tot)}</td><td>${pct(o.web,tot).toFixed(0)}%</td></tr>`; }
+  const gtot=T.web+T.cen+T.oth;
+  h+=`<tr class="totrow"><td>All</td><td>${fmt(T.web)}</td><td>${fmt(T.cen)}</td><td>${fmt(gtot)}</td><td>${pct(T.web,gtot).toFixed(0)}%</td></tr></tbody>`;
+  document.getElementById('centerSrc').innerHTML=h;
 }
 
 // ===== Mar15–Jun15 comparison tables + auto inferences =====
