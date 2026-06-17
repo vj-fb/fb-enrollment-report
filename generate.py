@@ -292,8 +292,8 @@ const S = DATA.statuses, C = DATA.centers, SRC = DATA.sources, HEAR = DATA.hears
 const ORDER = DATA.statusOrder;
 const sIdx = s => S.indexOf(s);
 // ---- Metric definitions (per user spec) ----
-// Enrolled / success = Waitlist-Joined + Enrollment-Enrolled + Withdrawn
-const ENR_SET = ["Waitlist - Joined","Enrollment - Enrolled","Withdrawn"].map(sIdx).filter(i=>i>=0);
+// Enrolled / success = Enrollment-Enrolled + Withdrawn
+const ENR_SET = ["Enrollment - Enrolled","Withdrawn"].map(sIdx).filter(i=>i>=0);
 const isEnrolled = i => ENR_SET.includes(i);
 // Tours done = Tour-Toured + Tour-Virtual (an actual visit happened)
 const TOURDONE_SET = ["Tour - Toured","Tour - Virtual"].map(sIdx).filter(i=>i>=0);
@@ -386,7 +386,7 @@ function render(){
     + `<div class="card" style="grid-column:1/-1;background:var(--panel2)"><div class="k">Definitions</div>`
     + `<div style="font-size:12.5px;margin-top:4px;line-height:1.6">`
     + `<b>Tours done</b> = Tour&nbsp;-&nbsp;Toured + Tour&nbsp;-&nbsp;Virtual &nbsp;·&nbsp; `
-    + `<b style="color:var(--good)">Enrolled (success)</b> = Waitlist&nbsp;-&nbsp;Joined + Enrollment&nbsp;-&nbsp;Enrolled + Withdrawn &nbsp;·&nbsp; `
+    + `<b style="color:var(--good)">Enrolled (success)</b> = Enrollment&nbsp;-&nbsp;Enrolled + Withdrawn &nbsp;·&nbsp; `
     + `<b>Lead&rarr;Enrolled %</b> = Enrolled &divide; Total leads`
     + `</div></div>`;
 
@@ -429,13 +429,24 @@ function renderFindings(){
   const dl=d(b.leads,a.leads);
   li.push(`<li><b>Leads ${dl.c==='down'?'fell':'changed'}</b> from ${fmt(a.leads)} (${py}) to ${fmt(b.leads)} (${cy}) ${tag(dl)}. ${dl.c==='down'?'Fewer people entered the funnel this season — the top-of-funnel is the problem, not closing.':''}</li>`);
   const de=d(b.enr,a.enr);
-  li.push(`<li><b>Enrolled</b> (Waitlist-Joined + Enrolled + Withdrawn) went from ${fmt(a.enr)} to ${fmt(b.enr)} ${tag(de)}. ${b.enr<a.enr?'Down roughly in line with leads — the drop is a volume problem, not a closing problem.':(b.enr>a.enr?'Up despite fewer leads.':'Flat.')}</li>`);
+  const leadDrop=a.leads?(a.leads-b.leads)/a.leads*100:0, enrDrop=a.enr?(a.enr-b.enr)/a.enr*100:0;
+  let enrMsg;
+  if(b.enr>a.enr) enrMsg='Up despite fewer leads — the team closed more from a smaller pool.';
+  else if(b.enr<a.enr && leadDrop-enrDrop>5) enrMsg='Down, but by less than leads — enrollments held up better than the lead drop, because conversion rose.';
+  else if(b.enr<a.enr) enrMsg='Down roughly in line with leads — mainly a volume problem.';
+  else enrMsg='Flat.';
+  li.push(`<li><b>Enrolled</b> (Enrolled + Withdrawn) went from ${fmt(a.enr)} to ${fmt(b.enr)} ${tag(de)}. ${enrMsg}</li>`);
   const dc=delta(b.conv,a.conv);
   const flat=Math.abs(b.conv-a.conv)<1;
-  li.push(`<li><b>Lead&rarr;Enrolled conversion</b> ${a.conv.toFixed(1)}% &rarr; ${b.conv.toFixed(1)}% ${tag(dc)}. ${flat?'Essentially unchanged — the team converts the same share of leads; they just have fewer leads to work.':(b.conv>=a.conv?'Improved.':'Softened.')}</li>`);
+  li.push(`<li><b>Lead&rarr;Enrolled conversion</b> ${a.conv.toFixed(1)}% &rarr; ${b.conv.toFixed(1)}% ${tag(dc)}. ${flat?'Essentially unchanged — the team converts the same share of leads; they just have fewer leads to work.':(b.conv>=a.conv?'Improved — a higher share of a smaller pool is converting.':'Softened — closing got harder, not just thinner demand.')}</li>`);
   const dt=d(b.tours,a.tours);
   li.push(`<li><b>Tours done</b> (Toured + Virtual): ${fmt(a.tours)} &rarr; ${fmt(b.tours)} ${tag(dt)}. <b>Declined:</b> ${fmt(a.dec)} &rarr; ${fmt(b.dec)} ${tag(d(b.dec,a.dec))}.</li>`);
-  li.push(`<li class="flat" style="color:var(--muted)"><b>Bottom line:</b> with conversion flat, the way to grow enrollments is to <b>rebuild lead volume</b> (top of funnel), not chase a better close rate. <b>Caveat:</b> status is each lead&rsquo;s state <i>today</i>; the ${cy} cohort is still maturing, so its counts will keep shifting.</li>`);
+  const blMsg = flat
+    ? 'with conversion flat, the way to grow enrollments is to <b>rebuild lead volume</b> (top of funnel), not chase a better close rate.'
+    : (b.conv>a.conv
+        ? 'conversion improved but leads fell faster, so <b>rebuilding lead volume</b> (top of funnel) is the biggest remaining lever.'
+        : 'both demand and closing softened — work top-of-funnel volume and follow-up together.');
+  li.push(`<li class="flat" style="color:var(--muted)"><b>Bottom line:</b> ${blMsg} <b>Caveat:</b> status is each lead&rsquo;s state <i>today</i>; the ${cy} cohort is still maturing, so its counts will keep shifting.</li>`);
   document.getElementById('findings').innerHTML=li.join('');
 }
 
