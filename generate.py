@@ -161,7 +161,7 @@ HTML = r"""<!DOCTYPE html>
 </head>
 <body>
 <header>
-  <h1>Enrollment &amp; CRM Funnel Analysis</h1>
+  <h1>Enrollment &amp; CRM Funnel Analysis <span style="font-size:13px;color:var(--muted)">&middot; <a href="daily.html" style="color:var(--accent)">daily tracker &rarr;</a></span></h1>
   <div class="sub">Source: CRM Details by Created Date &middot; <span id="genmeta"></span></div>
 </header>
 
