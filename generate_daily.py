@@ -1,22 +1,29 @@
 #!/usr/bin/env python3
 """Build a self-contained DAILY lead-trend tracker (daily.html)."""
-import csv, json, os
+import csv, json, os, glob
 from datetime import datetime
 
-SRC = "/Users/vijaybabu.g/Desktop/FuelingBrains/FBClaude/crm_source/crm_latest.csv"
+SRC_DIR = "/Users/vijaybabu.g/Desktop/FuelingBrains/FBClaude/crm_source"
 OUT = os.path.join(os.path.dirname(__file__), "daily.html")
 FLOOR = datetime(2024, 6, 1)   # keep ~2 years; guards against an accidental all-history export
 
-with open(SRC, newline='') as f:
-    lines = f.readlines()
+# Merge every CSV in the source folder (one file per CRM account / login).
 data = []
-for r in csv.reader(lines[6:]):
-    if not r or all(not c.strip() for c in r):
-        continue
-    r = [c.strip() for c in r]
-    if len(r) < 12:
-        continue
-    data.append(r)
+seen = set()
+for fp in sorted(glob.glob(os.path.join(SRC_DIR, "*.csv"))):
+    with open(fp, newline='', encoding='utf-8-sig') as f:
+        body = f.readlines()[6:]
+    for r in csv.reader(body):
+        if not r or all(not c.strip() for c in r):
+            continue
+        r = [c.strip() for c in r]
+        if len(r) < 12:
+            continue
+        key = tuple(r[:12])
+        if key in seen:
+            continue
+        seen.add(key)
+        data.append(r)
 
 def pdate(s):
     try: return datetime.strptime(s, "%m/%d/%Y")

@@ -1,23 +1,32 @@
 #!/usr/bin/env python3
 """Build a self-contained interactive HTML enrollment/CRM analysis report."""
-import csv, json, os
+import csv, json, os, glob
 from datetime import datetime
 
-SRC = "/Users/vijaybabu.g/Downloads/CRMDetailsByCreatedDate (3).csv"
+SRC_DIR = "/Users/vijaybabu.g/Desktop/FuelingBrains/FBClaude/crm_source"
 OUT = os.path.join(os.path.dirname(__file__), "index.html")
+FLOOR = datetime(2024, 6, 1)   # keep ~2 years; guards against an accidental all-history export
 
-with open(SRC, newline='') as f:
-    lines = f.readlines()
-
-reader = csv.reader(lines[6:])
+# Merge every CSV in the source folder (one file per CRM account / login).
+# Exact-duplicate records are dropped as a safety net.
 data = []
-for r in reader:
-    if not r or all(not c.strip() for c in r):
-        continue
-    r = [c.strip() for c in r]
-    if len(r) < 12:
-        continue
-    data.append(r)
+seen = set()
+src_files = sorted(glob.glob(os.path.join(SRC_DIR, "*.csv")))
+for fp in src_files:
+    with open(fp, newline='', encoding='utf-8-sig') as f:
+        body = f.readlines()[6:]
+    for r in csv.reader(body):
+        if not r or all(not c.strip() for c in r):
+            continue
+        r = [c.strip() for c in r]
+        if len(r) < 12:
+            continue
+        key = tuple(r[:12])
+        if key in seen:
+            continue
+        seen.add(key)
+        data.append(r)
+print("Merged %d account file(s): %s" % (len(src_files), ", ".join(os.path.basename(x) for x in src_files)))
 
 def pdate(s):
     try:
@@ -35,7 +44,7 @@ def idx(lst, v):
 rows = []
 for d in data:
     dt = pdate(d[10])
-    if not dt:
+    if not dt or dt < FLOOR:
         continue
     center = d[0]
     status = d[6] or "(blank)"
