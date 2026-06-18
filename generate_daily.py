@@ -3,8 +3,9 @@
 import csv, json, os
 from datetime import datetime
 
-SRC = "/Users/vijaybabu.g/Downloads/CRMDetailsByCreatedDate (3).csv"
+SRC = "/Users/vijaybabu.g/Desktop/FuelingBrains/FBClaude/crm_source/crm_latest.csv"
 OUT = os.path.join(os.path.dirname(__file__), "daily.html")
+FLOOR = datetime(2024, 6, 1)   # keep ~2 years; guards against an accidental all-history export
 
 with open(SRC, newline='') as f:
     lines = f.readlines()
@@ -29,7 +30,7 @@ def idx(lst, v):
 rows = []
 for d in data:
     dt = pdate(d[10])
-    if not dt: continue
+    if not dt or dt < FLOOR: continue
     web = 1 if d[8].strip() == "" else 0
     rows.append([
         idx(centers, d[0]),
@@ -117,15 +118,15 @@ HTML = r"""<!DOCTYPE html>
 
   <section>
     <h2>Daily new leads &mdash; trend</h2>
-    <p class="note">Bars = new leads per day. <span style="color:var(--accent)">Line</span> = 7-day moving average. <span style="color:var(--good)">Green</span> = Success (Enrolled + Withdrawn) booked that day.</p>
+    <p class="note">Bars = new leads per day. <span style="color:var(--accent)">Line</span> = 7-day moving average.</p>
     <div class="panel"><div id="chart"></div>
-      <div class="legend"><span style="color:#4f8cff">&#9632;</span> New leads &nbsp; <span style="color:#9db4e6">&#9472;</span> 7-day avg &nbsp; <span style="color:#37c97f">&#9632;</span> Success</div>
+      <div class="legend"><span style="color:#4f8cff">&#9632;</span> New leads &nbsp; <span style="color:#9db4e6">&#9472;</span> 7-day avg</div>
     </div>
   </section>
 
   <section>
     <h2>Daily summary</h2>
-    <p class="note">Per day: total new leads, how they came in (Webform = no staff name vs Added at center), and Success booked.</p>
+    <p class="note">Per day: total new leads, how they came in (Webform = no staff name vs Added at center), and the three outcome statuses shown separately &mdash; <b>Offered</b> (Enrollment&nbsp;-&nbsp;Offered), <b>Enrolled</b> (Enrollment&nbsp;-&nbsp;Enrolled), <b>Withdrawn</b>.</p>
     <div class="panel"><div class="scrollx"><table id="summary"></table></div></div>
   </section>
 
@@ -147,8 +148,8 @@ const DATA = __DATA__;
 const R = DATA.rows;          // [centerIdx, statusIdx, 'YYYY-MM-DD', hearIdx, web]
 const C = DATA.centers, S = DATA.statuses, HEAR = DATA.hears;
 const sIdx = s => S.indexOf(s);
-const SUCCESS = ['Enrollment - Enrolled','Withdrawn'].map(sIdx).filter(i=>i>=0);
-const isSuccess = i => SUCCESS.includes(i);
+// three outcome statuses kept SEPARATE (not combined)
+const I_OFF = sIdx('Enrollment - Offered'), I_ENR = sIdx('Enrollment - Enrolled'), I_WD = sIdx('Withdrawn');
 const MAXD = DATA.dataMax;
 function fmt(n){ return n.toLocaleString(); }
 function pct(n,d){ return d? n/d*100:0; }
@@ -172,8 +173,9 @@ function schoolRows(){ const sc=state.school; return R.filter(r=> sc==='all'||r[
 // daily aggregates over ALL days (for moving average history)
 function dailyMap(rows){
   const m={};
-  for(const r of rows){ const o=m[r[2]]=m[r[2]]||{total:0,web:0,staff:0,succ:0};
-    o.total++; if(r[4]===1)o.web++; else o.staff++; if(isSuccess(r[1]))o.succ++; }
+  for(const r of rows){ const o=m[r[2]]=m[r[2]]||{total:0,web:0,staff:0,off:0,enr:0,wd:0};
+    o.total++; if(r[4]===1)o.web++; else o.staff++;
+    if(r[1]===I_OFF)o.off++; if(r[1]===I_ENR)o.enr++; if(r[1]===I_WD)o.wd++; }
   return m;
 }
 function windowDays(n){ const out=[]; for(let i=n-1;i>=0;i--) out.push(addDays(MAXD,-i)); return out; }
@@ -183,14 +185,16 @@ function render(){
   const m=dailyMap(rows);
   const N=state.days;
   const days=windowDays(N);
-  const get=d=>m[d]||{total:0,web:0,staff:0,succ:0};
+  const get=d=>m[d]||{total:0,web:0,staff:0,off:0,enr:0,wd:0};
 
   // KPIs
   const sum=arr=>arr.reduce((a,d)=>a+get(d).total,0);
   const total=sum(days);
   const prev=windowDays(N).map(d=>addDays(d,-N));
   const prevTotal=prev.reduce((a,d)=>a+get(d).total,0);
-  const succTotal=days.reduce((a,d)=>a+get(d).succ,0);
+  const offTotal=days.reduce((a,d)=>a+get(d).off,0);
+  const enrTotal=days.reduce((a,d)=>a+get(d).enr,0);
+  const wdTotal=days.reduce((a,d)=>a+get(d).wd,0);
   const todayN=get(MAXD).total;
   const avg=total/N;
   const ch=prevTotal?((total-prevTotal)/prevTotal*100):0;
@@ -203,7 +207,9 @@ function render(){
     [`Last ${N} days`, fmt(total), ''],
     ['Daily average', avg.toFixed(1), ''],
     [`vs previous ${N} days`, (ch>=0?'+':'')+ch.toFixed(0)+'%', `<span class="${chCls}">${fmt(prevTotal)} → ${fmt(total)}</span>`],
-    [`Success booked (${N}d)`, fmt(succTotal), `${pct(succTotal,total).toFixed(0)}% of leads`],
+    [`Offered (${N}d)`, fmt(offTotal), 'Enrollment - Offered'],
+    [`Enrolled (${N}d)`, fmt(enrTotal), 'Enrollment - Enrolled'],
+    [`Withdrawn (${N}d)`, fmt(wdTotal), 'Withdrawn'],
   ];
   document.getElementById('kpis').innerHTML=kpis.map(k=>
     `<div class="card"><div class="k">${k[0]}</div><div class="v">${k[1]}</div>${k[2]?`<div class="d">${k[2]}</div>`:''}</div>`).join('');
@@ -222,29 +228,28 @@ function renderChart(days,get,m){
   const x=i=>padL+i*((W-padL-12)/Math.max(days.length-1,1));
   const y=v=>H-padB-(v/maxV*(H-padB-padT));
   const bw=Math.max(8, Math.min(26,(W-padL-12)/days.length*0.6));
-  let bars='',succ='';
+  let bars='';
   days.forEach((d,i)=>{const o=get(d);
     const h=o.total/maxV*(H-padB-padT); bars+=`<rect x="${x(i)-bw/2}" y="${y(o.total)}" width="${bw}" height="${h}" rx="2" fill="#4f8cff"/>`;
-    const hs=o.succ/maxV*(H-padB-padT); succ+=`<rect x="${x(i)-bw/2}" y="${y(o.succ)}" width="${bw}" height="${hs}" rx="2" fill="#37c97f" opacity=".85"/>`;
     bars+=`<text x="${x(i)}" y="${y(o.total)-4}" text-anchor="middle" fill="#cdd7ee">${o.total||''}</text>`;
   });
   const mp=days.map((d,i)=>`${x(i)},${y(ma7(d,m))}`).join(' ');
   const lbls=days.map((d,i)=>{const step=Math.ceil(days.length/12);return i%step===0?`<text x="${x(i)}" y="${H-padB+16}" text-anchor="middle">${d.slice(5)}</text>`:'';}).join('');
   document.getElementById('chart').innerHTML=
     `<svg viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="xMidYMid meet">
-      ${bars}${succ}
+      ${bars}
       <polyline points="${mp}" fill="none" stroke="#9db4e6" stroke-width="2" stroke-dasharray="4 3"/>
       ${lbls}
     </svg>`;
 }
 
 function renderSummary(days,get){
-  let h='<thead><tr><th>Day</th><th>New leads</th><th>Webform</th><th>At center</th><th>Success</th><th>Success %</th></tr></thead><tbody>';
-  let T={t:0,w:0,s:0,su:0};
-  [...days].reverse().forEach(d=>{const o=get(d);T.t+=o.total;T.w+=o.web;T.s+=o.staff;T.su+=o.succ;
+  let h='<thead><tr><th>Day</th><th>New leads</th><th>Webform</th><th>At center</th><th>Offered</th><th>Enrolled</th><th>Withdrawn</th></tr></thead><tbody>';
+  let T={t:0,w:0,s:0,off:0,enr:0,wd:0};
+  [...days].reverse().forEach(d=>{const o=get(d);T.t+=o.total;T.w+=o.web;T.s+=o.staff;T.off+=o.off;T.enr+=o.enr;T.wd+=o.wd;
     const isToday=d===MAXD;
-    h+=`<tr><td>${dayLabel(d)}${isToday?' <span class="today">•</span>':''}</td><td>${fmt(o.total)}</td><td>${fmt(o.web)}</td><td>${fmt(o.staff)}</td><td>${fmt(o.succ)}</td><td>${o.total?pct(o.succ,o.total).toFixed(0)+'%':'—'}</td></tr>`;});
-  h+=`<tr class="totrow"><td>Total</td><td>${fmt(T.t)}</td><td>${fmt(T.w)}</td><td>${fmt(T.s)}</td><td>${fmt(T.su)}</td><td>${T.t?pct(T.su,T.t).toFixed(0)+'%':'—'}</td></tr></tbody>`;
+    h+=`<tr><td>${dayLabel(d)}${isToday?' <span class="today">•</span>':''}</td><td>${fmt(o.total)}</td><td>${fmt(o.web)}</td><td>${fmt(o.staff)}</td><td>${o.off||''}</td><td>${o.enr||''}</td><td>${o.wd||''}</td></tr>`;});
+  h+=`<tr class="totrow"><td>Total</td><td>${fmt(T.t)}</td><td>${fmt(T.w)}</td><td>${fmt(T.s)}</td><td>${fmt(T.off)}</td><td>${fmt(T.enr)}</td><td>${fmt(T.wd)}</td></tr></tbody>`;
   document.getElementById('summary').innerHTML=h;
 }
 
