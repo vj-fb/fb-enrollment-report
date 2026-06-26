@@ -112,6 +112,7 @@ HTML = r"""<!DOCTYPE html>
     <select id="days">
       <option value="10">Last 10 days</option>
       <option value="14">Last 14 days</option>
+      <option value="15" selected>Last 15 days</option>
       <option value="30">Last 30 days</option>
       <option value="60">Last 60 days</option>
       <option value="90">Last 90 days</option>
@@ -166,7 +167,7 @@ document.getElementById('genmeta').textContent =
 
 const elSchool=document.getElementById('school'), elDays=document.getElementById('days');
 elSchool.innerHTML='<option value="all">All schools</option>'+C.map((c,i)=>`<option value="${i}">${c}</option>`).join('');
-let state={school:'all', days:10};
+let state={school:'all', days:15};
 elSchool.onchange=()=>{state.school=elSchool.value;render();};
 elDays.onchange=()=>{state.days=+elDays.value;render();};
 
